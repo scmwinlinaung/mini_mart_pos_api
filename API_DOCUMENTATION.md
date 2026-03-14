@@ -1100,6 +1100,7 @@ GET /api/expenses
 |-----------|------|----------|-------------|
 | page | number | No | Page number (default: 1) |
 | limit | number | No | Items per page, max 100 (default: 20) |
+| search | string | No | Search in title, description, or category name |
 | startDate | date | No | Filter by start date |
 | endDate | date | No | Filter by end date |
 | categoryId | number | No | Filter by category ID |

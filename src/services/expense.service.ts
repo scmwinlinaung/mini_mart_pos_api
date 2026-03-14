@@ -8,6 +8,7 @@ class ExpenseService {
   async getAllExpenses(
     page: number = 1,
     limit: number = env.pagination.defaultPageLimit,
+    search?: string,
     startDate?: Date,
     endDate?: Date,
     categoryId?: number,
@@ -16,6 +17,14 @@ class ExpenseService {
       const offset = (page - 1) * limit;
 
       const where: any = { isActive: true };
+
+      if (search) {
+        where[Op.or] = [
+          { title: { [Op.iLike]: `%${search}%` } },
+          { description: { [Op.iLike]: `%${search}%` } },
+          { '$category.categoryName$': { [Op.iLike]: `%${search}%` } },
+        ];
+      }
 
       if (startDate || endDate) {
         where.expenseDate = {};

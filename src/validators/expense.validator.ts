@@ -19,6 +19,7 @@ export const updateExpenseSchema = Joi.object({
 export const expenseQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
   limit: Joi.number().integer().min(1).max(100).optional(),
+  search: Joi.string().optional(),
   startDate: Joi.date().optional(),
   endDate: Joi.date().optional(),
   categoryId: Joi.number().integer().positive().optional(),

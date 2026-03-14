@@ -6,11 +6,12 @@ import logger from '../utils/logger.util';
 
 export const getAllExpenses = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { page = 1, limit = 20, startDate, endDate, categoryId } = req.query;
+    const { page = 1, limit = 20, search, startDate, endDate, categoryId } = req.query;
 
     const result = await expenseService.getAllExpenses(
       Number(page),
       Number(limit),
+      search as string,
       startDate ? new Date(startDate as string) : undefined,
       endDate ? new Date(endDate as string) : undefined,
       categoryId ? Number(categoryId) : undefined,

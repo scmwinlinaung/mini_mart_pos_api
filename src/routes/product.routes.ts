@@ -17,7 +17,19 @@ router.get(
   productController.getAllProducts,
 );
 
+// Search products (paginated)
+router.get('/search', productController.searchProductsPaginated);
+
+// Inventory management routes (admin/manager only)
 router.get('/low-stock', authenticate, authorize(USER_ROLES.ADMIN, USER_ROLES.MANAGER), productController.getLowStockProducts);
+router.get('/low-stock-paginated', authenticate, authorize(USER_ROLES.ADMIN, USER_ROLES.MANAGER), productController.getLowStockProductsPaginated);
+router.get('/out-of-stock', authenticate, authorize(USER_ROLES.ADMIN, USER_ROLES.MANAGER), productController.getOutOfStockProductsPaginated);
+router.get('/summary', authenticate, authorize(USER_ROLES.ADMIN, USER_ROLES.MANAGER), productController.getInventorySummary);
+
+// Stock movement history route (admin/manager only)
+router.get('/:id/stock-movements', authenticate, authorize(USER_ROLES.ADMIN, USER_ROLES.MANAGER), productController.getStockMovementHistory);
+
+// Product by barcode and ID routes
 router.get('/:id', productController.getProductById);
 router.get('/barcode/:barcode', productController.getProductByBarcode);
 

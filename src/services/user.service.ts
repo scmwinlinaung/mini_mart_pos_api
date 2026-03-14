@@ -104,11 +104,11 @@ class UserService {
       }
 
       // Hash password
-      const hashedPassword = await authService.hashPassword(data.password);
+      // const hashedPassword = await authService.hashPassword(data.password);
 
       const user = await User.create({
         username: data.username,
-        passwordHash: hashedPassword,
+        passwordHash: data.password,
         fullName: data.fullName,
         roleId: data.roleId,
         isActive: data.isActive !== undefined ? data.isActive : true,
@@ -153,7 +153,7 @@ class UserService {
       if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
       if (data.password) {
-        updateData.passwordHash = await authService.hashPassword(data.password);
+        updateData.passwordHash = data.password;
       }
 
       await user.update(updateData);

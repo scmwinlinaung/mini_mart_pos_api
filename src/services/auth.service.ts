@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import env from '../config/env.config';
 import { User, Role } from '../models';
@@ -6,16 +6,17 @@ import { TokenPair, JwtPayload } from '../types';
 import logger from '../utils/logger.util';
 
 class AuthService {
-  private readonly SALT_ROUNDS = 12;
+  private readonly SALT = 'mini_mart_pos_salt';
 
   // Hash password
   async hashPassword(password: string): Promise<string> {
-    return bcrypt.hash(password, this.SALT_ROUNDS);
+    return crypto.createHmac('sha512', this.SALT).update(password).digest('hex');
   }
 
   // Compare password
   async comparePassword(password: string, hash: string): Promise<boolean> {
-    return bcrypt.compare(password, hash);
+    const hashedPassword = await this.hashPassword(password);
+    return hashedPassword === hash;
   }
 
   // Generate JWT tokens
@@ -69,7 +70,9 @@ class AuthService {
       }
 
       // Verify password
-      const isValidPassword = await this.comparePassword(password, user.passwordHash);
+      console.log("password = " + password)
+      console.log("user.passwordHash; = " + user.passwordHash)
+      const isValidPassword = password == user.passwordHash;
       if (!isValidPassword) {
         throw new Error('Invalid credentials');
       }

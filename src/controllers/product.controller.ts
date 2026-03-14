@@ -127,6 +127,106 @@ export const getLowStockProducts = async (_req: Request, res: Response): Promise
   }
 };
 
+export const getInventorySummary = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const summary = await productService.getInventorySummary();
+
+    successResponse(res, summary, 'Inventory summary retrieved successfully');
+  } catch (error) {
+    logger.error('Get inventory summary controller error:', error);
+    errorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_MESSAGES.INTERNAL_ERROR);
+  }
+};
+
+export const getLowStockProductsPaginated = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+
+    const result = await productService.getLowStockProductsPaginated(
+      Number(page),
+      Number(limit),
+    );
+
+    paginatedResponse(
+      res,
+      result.data,
+      result.pagination.page,
+      result.pagination.limit,
+      result.pagination.total,
+    );
+  } catch (error) {
+    logger.error('Get low stock products paginated controller error:', error);
+    errorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_MESSAGES.INTERNAL_ERROR);
+  }
+};
+
+export const getOutOfStockProductsPaginated = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+
+    const result = await productService.getOutOfStockProductsPaginated(
+      Number(page),
+      Number(limit),
+    );
+
+    paginatedResponse(
+      res,
+      result.data,
+      result.pagination.page,
+      result.pagination.limit,
+      result.pagination.total,
+    );
+  } catch (error) {
+    logger.error('Get out of stock products paginated controller error:', error);
+    errorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_MESSAGES.INTERNAL_ERROR);
+  }
+};
+
+export const searchProductsPaginated = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { search, page = 1, limit = 20 } = req.query;
+
+    if (!search || typeof search !== 'string') {
+      errorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Search query is required');
+      return;
+    }
+
+    const result = await productService.searchProductsPaginated(
+      search,
+      Number(page),
+      Number(limit),
+    );
+
+    paginatedResponse(
+      res,
+      result.data,
+      result.pagination.page,
+      result.pagination.limit,
+      result.pagination.total,
+    );
+  } catch (error) {
+    logger.error('Search products paginated controller error:', error);
+    errorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_MESSAGES.INTERNAL_ERROR);
+  }
+};
+
+export const getStockMovementHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { limit = 100 } = req.query;
+
+    const stockMovements = await productService.getStockMovementHistory(
+      Number(id),
+      Number(limit),
+    );
+
+    successResponse(res, stockMovements, 'Stock movement history retrieved successfully');
+  } catch (error) {
+    logger.error('Get stock movement history controller error:', error);
+    errorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_MESSAGES.INTERNAL_ERROR);
+  }
+};
+
 export default {
   getAllProducts,
   getProductById,
@@ -135,4 +235,9 @@ export default {
   updateProduct,
   deleteProduct,
   getLowStockProducts,
+  getInventorySummary,
+  getLowStockProductsPaginated,
+  getOutOfStockProductsPaginated,
+  searchProductsPaginated,
+  getStockMovementHistory,
 };

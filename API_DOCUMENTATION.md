@@ -621,21 +621,183 @@ GET /api/products/low-stock
 
 ---
 
-#### 5.3 Get Product by ID
+#### 5.3 Get Inventory Summary
+```http
+GET /api/products/summary
+```
+
+**Authentication Required:** Yes (Admin/Manager)
+**Feature Flag:** `FF_PRODUCTS`
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "totalProducts": "number",
+    "outOfStock": "number",
+    "lowStock": "number",
+    "activeProducts": "number"
+  },
+  "message": "Inventory summary retrieved successfully"
+}
+```
+
+**Field Descriptions:**
+| Field | Description |
+|-------|-------------|
+| totalProducts | Total count of all products in inventory |
+| outOfStock | Count of products with stock quantity <= 0 |
+| lowStock | Count of products with stock quantity > 0 but <= reorder level |
+| activeProducts | Count of products where is_active = true |
+
+---
+
+#### 5.4 Search Products (Paginated)
+```http
+GET /api/products/search
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| search | string | Yes | Search query for product name or barcode |
+| page | number | No | Page number (default: 1) |
+| limit | number | No | Items per page, max 100 (default: 20) |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": number,
+      "barcode": "string",
+      "productName": "string",
+      "description": "string",
+      "categoryId": number,
+      "supplierId": number,
+      "unitTypeId": number,
+      "costPrice": "number",
+      "sellPrice": "number",
+      "stockQuantity": "number",
+      "reorderLevel": "number",
+      "isActive": boolean,
+      "category": { "id": number, "categoryName": "string" },
+      "supplier": { "id": number, "companyName": "string" },
+      "unitType": { "id": number, "unitCode": "string", "unitName": "string" }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 15,
+    "totalPages": 1
+  }
+}
+```
+
+---
+
+#### 5.5 Get Low Stock Products (Paginated)
+```http
+GET /api/products/low-stock-paginated
+```
+
+**Authentication Required:** Yes (Admin/Manager)
+**Feature Flag:** `FF_PRODUCTS`
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| page | number | No | Page number (default: 1) |
+| limit | number | No | Items per page, max 100 (default: 20) |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": number,
+      "productName": "string",
+      "barcode": "string",
+      "stockQuantity": number,
+      "reorderLevel": number,
+      "category": { "id": number, "categoryName": "string" },
+      "supplier": { "id": number, "companyName": "string" }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 45,
+    "totalPages": 3
+  }
+}
+```
+
+**Note:** Returns products where stock quantity is greater than 0 but less than or equal to reorder level, ordered by stock quantity (ascending).
+
+---
+
+#### 5.6 Get Out of Stock Products (Paginated)
+```http
+GET /api/products/out-of-stock
+```
+
+**Authentication Required:** Yes (Admin/Manager)
+**Feature Flag:** `FF_PRODUCTS`
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| page | number | No | Page number (default: 1) |
+| limit | number | No | Items per page, max 100 (default: 20) |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": number,
+      "productName": "string",
+      "barcode": "string",
+      "stockQuantity": 0,
+      "reorderLevel": number,
+      "category": { "id": number, "categoryName": "string" },
+      "supplier": { "id": number, "companyName": "string" }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 8,
+    "totalPages": 1
+  }
+}
+```
+
+**Note:** Returns products with stock quantity less than or equal to 0, ordered by product name (ascending).
+
+---
+
+#### 5.7 Get Product by ID
 ```http
 GET /api/products/:id
 ```
 
 ---
 
-#### 5.4 Get Product by Barcode
+#### 5.8 Get Product by Barcode
 ```http
 GET /api/products/barcode/:barcode
 ```
 
 ---
 
-#### 5.5 Create Product
+#### 5.9 Create Product
 ```http
 POST /api/products
 ```
@@ -662,7 +824,7 @@ POST /api/products
 
 ---
 
-#### 5.6 Update Product
+#### 5.10 Update Product
 ```http
 PUT /api/products/:id
 ```
@@ -689,13 +851,56 @@ PUT /api/products/:id
 
 ---
 
-#### 5.7 Delete Product
+#### 5.11 Delete Product
 ```http
 DELETE /api/products/:id
 ```
 
 **Authentication Required:** Yes (Admin/Manager)
 **Feature Flag:** `FF_PRODUCTS`
+
+---
+
+#### 5.12 Get Stock Movement History
+```http
+GET /api/products/:id/stock-movements
+```
+
+**Authentication Required:** Yes (Admin/Manager)
+**Feature Flag:** `FF_PRODUCTS`
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| limit | number | No | Maximum number of records to return (default: 100) |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "movementId": number,
+      "productId": number,
+      "userId": number,
+      "movementType": "SALE | PURCHASE | RETURN | ADJUSTMENT",
+      "quantity": number,
+      "notes": "string",
+      "isActive": boolean,
+      "createdAt": "date",
+      "updatedAt": "date",
+      "user": {
+        "userId": number,
+        "username": "string",
+        "fullName": "string"
+      }
+    }
+  ],
+  "message": "Stock movement history retrieved successfully"
+}
+```
+
+**Note:** Returns stock movement history for a specific product, ordered by creation date (descending, most recent first). Includes user information for each movement.
 
 ---
 

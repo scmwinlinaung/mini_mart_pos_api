@@ -40,17 +40,17 @@ const createApp = (): Application => {
   }
 
   // Rate limiting
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
-    message: {
-      success: false,
-      error: 'Too many requests from this IP, please try again later.',
-    },
-  });
+  // const limiter = rateLimit({
+  //   windowMs: 5 * 60 * 1000, // 15 minutes
+  //   max: 1000, // Limit each IP to 100 requests per windowMs
+  //   message: {
+  //     success: false,
+  //     error: 'Too many requests from this IP, please try again later.',
+  //   },
+  // });
 
   // Apply rate limiter to all API routes
-  app.use('/api', limiter);
+  // app.use('/api', limiter);
 
   // Stricter rate limiting for auth routes
   const authLimiter = rateLimit({

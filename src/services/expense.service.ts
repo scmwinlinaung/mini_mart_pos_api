@@ -112,7 +112,7 @@ class ExpenseService {
   async deleteExpense(id: number): Promise<void> {
     try {
       const expense = await this.getExpenseById(id);
-      await expense.update({ isActive: false });
+      await expense.destroy();
 
       logger.info(`Expense deleted: ${id}`);
     } catch (error) {

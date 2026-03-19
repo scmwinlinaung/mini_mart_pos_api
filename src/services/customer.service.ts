@@ -117,7 +117,7 @@ class CustomerService {
   async deleteCustomer(id: number): Promise<void> {
     try {
       const customer = await this.getCustomerById(id);
-      await customer.update({ isActive: false });
+      await customer.destroy();
 
       logger.info(`Customer deleted: ${id}`);
     } catch (error) {

@@ -26,6 +26,8 @@ class SupplierService {
 
       if (isActive !== undefined) {
         where.isActive = isActive;
+      } else {
+        where.isActive = true;
       }
 
       const { count, rows } = await Supplier.findAndCountAll({

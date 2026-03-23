@@ -25,6 +25,8 @@ class CategoryService {
 
       if (isActive !== undefined) {
         where.isActive = isActive;
+      } else {
+        where.isActive = true;
       }
 
       const { count, rows } = await Category.findAndCountAll({
@@ -52,6 +54,7 @@ class CategoryService {
   // Get category by ID
   async getCategoryById(id: number): Promise<Category> {
     try {
+      console.log("category id = " + id)
       const category = await Category.findOne({
         where: { categoryId: id },
       });

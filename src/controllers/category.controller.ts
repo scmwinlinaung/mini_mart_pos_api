@@ -80,6 +80,7 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
 export const deleteCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    console.log("Category id = " + id)
     await categoryService.deleteCategory(Number(id));
 
     successResponse(res, null, 'Category deleted successfully');

@@ -36,6 +36,8 @@ class ProductService {
 
       if (isActive !== undefined) {
         where.isActive = isActive;
+      } else {
+        where.isActive = true;  // default to fetch active product
       }
 
       if (lowStock) {

@@ -184,17 +184,18 @@ export const getOutOfStockProductsPaginated = async (req: Request, res: Response
 
 export const searchProductsPaginated = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { search, page = 1, limit = 20 } = req.query;
+    const { search, page = 1, limit = 20, supplierId } = req.query;
 
-    if (!search || typeof search !== 'string') {
-      errorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Search query is required');
-      return;
-    }
+    // if (!search || typeof search !== 'string') {
+    //   errorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Search query is required');
+    //   return;
+    // }
 
     const result = await productService.searchProductsPaginated(
-      search,
+      search as string,
       Number(page),
       Number(limit),
+      Number(supplierId),
     );
 
     paginatedResponse(

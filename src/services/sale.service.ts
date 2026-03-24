@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Sale, Product, StockMovement } from '../models';
+import { Sale, Product } from '../models';
 import sequelize from '../models';
 import { SaleCreateInput, PaginatedResult } from '../types';
 import env from '../config/env.config';
@@ -119,22 +119,6 @@ class SaleService {
         paymentStatus: data.paymentStatus || 'PAID',
       }, { transaction: t });
 
-      // Deduct stock and create stock movement (handled by database triggers for paid sales)
-      if (data.paymentStatus === 'PAID') {
-        await product.update({
-          stockQuantity: product.stockQuantity - data.quantity,
-        }, { transaction: t });
-
-        // Create stock movement record
-        await StockMovement.create({
-          productId: data.productId,
-          userId: userId,
-          movementType: 'SALE',
-          quantity: -data.quantity,
-          notes: `Sale ID: ${sale.saleId} - ${data.productName}`,
-        }, { transaction: t });
-      }
-
       await t.commit();
 
       logger.info(`Sale created: ${sale.saleId}`);
@@ -146,7 +130,7 @@ class SaleService {
     }
   }
 
-  async refundSale(id: number, userId: number, _refundAmount: number, reason?: string): Promise<Sale> {
+  async refundSale(id: number, _refundAmount: number,): Promise<Sale> {
     const t = await sequelize.transaction();
 
     try {
@@ -163,27 +147,10 @@ class SaleService {
         throw new Error('Sale already refunded');
       }
 
-      // Update sale status
+      // Update sale status (trigger will auto-restore stock and create stock movement)
       await sale.update({
         paymentStatus: 'REFUNDED',
       }, { transaction: t });
-
-      // Restore stock
-      const product = await Product.findByPk(sale.productId, { transaction: t });
-      if (product) {
-        await product.update({
-          stockQuantity: product.stockQuantity + sale.quantity,
-        }, { transaction: t });
-
-        // Create stock movement record for refund
-        await StockMovement.create({
-          productId: sale.productId,
-          userId: userId,
-          movementType: 'RETURN',
-          quantity: sale.quantity,
-          notes: `Refund for Sale ID: ${sale.saleId}${reason ? ` - ${reason}` : ''}`,
-        }, { transaction: t });
-      }
 
       await t.commit();
 

@@ -81,7 +81,7 @@ StockMovement.init(
     sequelize,
     modelName: 'StockMovement',
     tableName: 'stock_movements',
-    timestamps: true,
+    timestamps: false, // Disable auto-timestamps as they're managed by DB triggers and defaults
   },
 );
 

@@ -12,7 +12,7 @@ export const getAllSuppliers = async (req: Request, res: Response): Promise<void
       Number(page),
       Number(limit),
       search as string,
-      isActive !== undefined ? isActive === 'true' : undefined,
+      isActive as unknown as boolean,
     );
 
     paginatedResponse(

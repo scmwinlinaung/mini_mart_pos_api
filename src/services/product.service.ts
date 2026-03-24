@@ -296,17 +296,20 @@ class ProductService {
     search: string,
     page: number = 1,
     limit: number = env.pagination.defaultPageLimit,
+    supplierId: number,
   ): Promise<PaginatedResult<Product>> {
     try {
       const offset = (page - 1) * limit;
-
-      const where = {
+      const where: any = {
         isActive: true,
         [Op.or]: [
           { productName: { [Op.iLike]: `%${search}%` } },
           { barcode: { [Op.iLike]: `%${search}%` } },
         ],
       };
+      if (supplierId != undefined) {
+        where.supplierId = supplierId;
+      }
 
       const { count, rows } = await Product.findAndCountAll({
         where,

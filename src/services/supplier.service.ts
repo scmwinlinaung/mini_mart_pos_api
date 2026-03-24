@@ -23,7 +23,7 @@ class SupplierService {
           { phoneNumber: { [Op.iLike]: `%${search}%` } },
         ];
       }
-
+      console.log("isActive = " + isActive)
       if (isActive !== undefined) {
         where.isActive = isActive;
       } else {

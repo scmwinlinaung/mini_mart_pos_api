@@ -74,7 +74,7 @@ export const updatePurchase = async (req: Request, res: Response): Promise<void>
 
     const { id } = req.params;
     const { status } = req.body;
-    const purchase = await purchaseService.updatePurchase(Number(id), req.user.userId, status);
+    const purchase = await purchaseService.updatePurchase(Number(id), status);
 
     successResponse(res, purchase, 'Purchase updated successfully');
   } catch (error: any) {

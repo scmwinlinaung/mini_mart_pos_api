@@ -391,8 +391,8 @@ BEGIN
     WHERE product_id = NEW.product_id;
 
     -- 2. Add entry to Stock Ledger
-    INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at)
-    VALUES (NEW.product_id, NEW.user_id, 'SALE', -NEW.quantity, 'Sale ID: ' || NEW.sale_id || ' - ' || NEW.product_name, NOW());
+    INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
+    VALUES (NEW.product_id, NEW.user_id, 'SALE', -NEW.quantity, 'Sale ID: ' || NEW.sale_id || ' - ' || NEW.product_name, NOW(), NOW());
 
     RETURN NEW;
 END;
@@ -404,19 +404,83 @@ FOR EACH ROW
 WHEN (NEW.payment_status = 'PAID') -- Only deduct stock for paid sales
 EXECUTE FUNCTION fn_process_sale_stock();
 
+-- C. Trigger: Auto-Restore Stock on Refund
+CREATE OR REPLACE FUNCTION fn_process_sale_refund()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only process if payment_status changed to 'REFUNDED' and was previously 'PAID'
+    IF (NEW.payment_status = 'REFUNDED' AND OLD.payment_status = 'PAID') THEN
+        -- 1. Restore stock to Product Inventory
+        UPDATE products
+        SET stock_quantity = stock_quantity + NEW.quantity,
+            updated_at = NOW()
+        WHERE product_id = NEW.product_id;
+
+        -- 2. Add entry to Stock Ledger for refund
+        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
+        VALUES (NEW.product_id, NEW.user_id, 'RETURN', NEW.quantity, 'Refund for Sale ID: ' || NEW.sale_id, NOW(), NOW());
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sale_refund
+AFTER UPDATE OF payment_status ON sales
+FOR EACH ROW
+EXECUTE FUNCTION fn_process_sale_refund();
+
 -- B. Trigger: Auto-Add Stock on Purchase
 CREATE OR REPLACE FUNCTION fn_process_purchase_stock()
 RETURNS TRIGGER AS $$
+DECLARE
+    purchase_user_id INT;
+    purchase_status VARCHAR(8);
 BEGIN
-    -- 1. Add to Product Inventory
-    UPDATE products
-    SET stock_quantity = stock_quantity + NEW.quantity,
-        cost_price = NEW.buy_price -- Optional: Update latest cost price
-    WHERE product_id = NEW.product_id;
+    -- Get purchase status and user_id
+    SELECT status, user_id INTO purchase_status, purchase_user_id
+    FROM purchases
+    WHERE purchase_id = NEW.purchase_id;
 
-    -- 2. Add entry to Stock Ledger
-    INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at)
-    VALUES (NEW.product_id, NEW.user_id, 'PURCHASE', NEW.quantity, 'Stock In Purchase ID: ' || NEW.purchase_id, NOW());
+    -- Only process stock if purchase is RECEIVED
+    IF purchase_status = 'RECEIVED' THEN
+        -- 1. Add to Product Inventory
+        UPDATE products
+        SET stock_quantity = stock_quantity + NEW.quantity,
+            cost_price = NEW.buy_price -- Optional: Update latest cost price
+        WHERE product_id = NEW.product_id;
+
+        -- 2. Add entry to Stock Ledger
+        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
+        VALUES (NEW.product_id, purchase_user_id, 'PURCHASE', NEW.quantity, 'Stock In Purchase ID: ' || NEW.purchase_id, NOW(), NOW());
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- B.2. Trigger: Process Stock When Purchase Status Changes to RECEIVED
+CREATE OR REPLACE FUNCTION fn_process_purchase_status_received()
+RETURNS TRIGGER AS $$
+DECLARE
+    purchase_item RECORD;
+BEGIN
+    -- Only process when status changes to RECEIVED
+    IF NEW.status = 'RECEIVED' AND OLD.status != 'RECEIVED' THEN
+        FOR purchase_item IN
+            SELECT product_id, quantity, buy_price
+            FROM purchase_items
+            WHERE purchase_id = NEW.purchase_id
+        LOOP
+            UPDATE products
+            SET stock_quantity = stock_quantity + purchase_item.quantity,
+                cost_price = purchase_item.buy_price
+            WHERE product_id = purchase_item.product_id;
+
+            INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
+            VALUES (purchase_item.product_id, NEW.user_id, 'PURCHASE', purchase_item.quantity, 'Stock In Purchase ID: ' || NEW.purchase_id, NOW(), NOW());
+        END LOOP;
+    END IF;
 
     RETURN NEW;
 END;
@@ -426,6 +490,11 @@ CREATE TRIGGER trg_purchase_stock
 AFTER INSERT ON purchase_items
 FOR EACH ROW
 EXECUTE FUNCTION fn_process_purchase_stock();
+
+CREATE TRIGGER trg_purchase_status_received
+AFTER UPDATE OF status ON purchases
+FOR EACH ROW
+EXECUTE FUNCTION fn_process_purchase_status_received();
 
 -- ============================================
 -- AUTO-REFRESH TRIGGERS FOR MATERIALIZED VIEWS

@@ -81,8 +81,8 @@ export const refundSale = async (req: Request, res: Response): Promise<void> => 
     }
 
     const { id } = req.params;
-    const { refundAmount, reason } = req.body;
-    const sale = await saleService.refundSale(Number(id), req.user.userId, refundAmount, reason);
+    const { refundAmount } = req.body;
+    const sale = await saleService.refundSale(Number(id), refundAmount);
 
     successResponse(res, sale, 'Sale refunded successfully');
   } catch (error: any) {

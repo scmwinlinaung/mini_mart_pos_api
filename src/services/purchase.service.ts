@@ -40,7 +40,6 @@ class PurchaseService {
         include: ['supplier', 'user', { model: PurchaseItem, as: 'items', include: ['product'] }],
         order: [['purchaseDate', 'DESC']],
       });
-
       return {
         data: rows,
         pagination: {

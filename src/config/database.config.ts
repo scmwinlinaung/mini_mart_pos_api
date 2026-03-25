@@ -46,6 +46,8 @@ export const connectDatabase = async (): Promise<void> => {
       await sequelize.query('DROP TRIGGER IF EXISTS trg_sale_refund ON sales;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_stock ON purchase_items;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_status_received ON purchases;');
+      await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_soft_delete ON purchases;');
+      await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_item_delete ON purchase_items;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_refresh_dashboard_sales ON sales;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_refresh_dashboard_expenses ON expenses;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_refresh_dashboard_products ON products;');
@@ -342,6 +344,87 @@ const recreateTriggers = async (): Promise<void> => {
     AFTER UPDATE OF status ON purchases
     FOR EACH ROW
     EXECUTE FUNCTION fn_process_purchase_status_received();
+  `);
+
+  // Create the function for processing purchase item deletion
+  await sequelize.query(`
+    CREATE OR REPLACE FUNCTION fn_process_purchase_item_delete()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      purchase_status VARCHAR(8);
+      purchase_user_id INT;
+    BEGIN
+      -- Get purchase status and user_id
+      SELECT status, user_id INTO purchase_status, purchase_user_id
+      FROM purchases
+      WHERE purchase_id = OLD.purchase_id;
+
+      -- Only process stock if purchase was RECEIVED (stock was added)
+      IF purchase_status = 'RECEIVED' THEN
+        -- 1. Subtract from Product Inventory (reverse the purchase)
+        UPDATE products
+        SET stock_quantity = stock_quantity - OLD.quantity
+        WHERE product_id = OLD.product_id;
+
+        -- 2. Add entry to Stock Ledger for deletion
+        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
+        VALUES (OLD.product_id, purchase_user_id, 'ADJUSTMENT', -OLD.quantity, 'Deleted Purchase Item ID: ' || OLD.item_id || ' (Purchase ID: ' || OLD.purchase_id || ')', NOW(), NOW());
+      END IF;
+
+      RETURN OLD;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  // Create the purchase item delete trigger
+  await sequelize.query(`
+    CREATE TRIGGER trg_purchase_item_delete
+    AFTER DELETE ON purchase_items
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_process_purchase_item_delete();
+  `);
+
+  // Create the function for processing purchase soft delete (isActive = false)
+  await sequelize.query(`
+    CREATE OR REPLACE FUNCTION fn_process_purchase_soft_delete()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      purchase_item RECORD;
+    BEGIN
+      -- Only process when isActive changes to false
+      IF NEW.is_active = FALSE AND OLD.is_active = TRUE THEN
+        -- Only reverse stock if purchase was RECEIVED
+        IF NEW.status = 'RECEIVED' THEN
+          -- Process all purchase items for this purchase
+          FOR purchase_item IN
+            SELECT product_id, quantity, item_id
+            FROM purchase_items
+            WHERE purchase_id = NEW.purchase_id
+            AND is_active = TRUE
+          LOOP
+            -- 1. Subtract from Product Inventory (reverse the purchase)
+            UPDATE products
+            SET stock_quantity = stock_quantity - purchase_item.quantity
+            WHERE product_id = purchase_item.product_id;
+
+            -- 2. Add entry to Stock Ledger for soft-delete
+            INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
+            VALUES (purchase_item.product_id, NEW.user_id, 'ADJUSTMENT', -purchase_item.quantity, 'Soft-Deleted Purchase ID: ' || NEW.purchase_id || ' (Item ID: ' || purchase_item.item_id || ')', NOW(), NOW());
+          END LOOP;
+        END IF;
+      END IF;
+
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  // Create the purchase soft delete trigger
+  await sequelize.query(`
+    CREATE TRIGGER trg_purchase_soft_delete
+    AFTER UPDATE OF is_active ON purchases
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_process_purchase_soft_delete();
   `);
 
   // Create the function for refreshing dashboard summary

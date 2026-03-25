@@ -1,14 +1,11 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
-import { checkFeatureFlag } from '../middleware/featureFlag.middleware';
 import validate from '../middleware/validation.middleware';
 import * as productController from '../controllers/product.controller';
 import * as productValidator from '../validators/product.validator';
 import { USER_ROLES } from '../constants';
 
 const router = Router();
-
-router.use(checkFeatureFlag('FF_PRODUCTS'));
 
 // Public routes for POS
 router.get(

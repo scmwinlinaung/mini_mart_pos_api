@@ -1,14 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
-import { checkFeatureFlag } from '../middleware/featureFlag.middleware';
 import validate from '../middleware/validation.middleware';
 import * as authController from '../controllers/auth.controller';
 import * as authValidator from '../validators/auth.validator';
 
 const router = Router();
-
-// All auth routes require FF_AUTH to be enabled
-router.use(checkFeatureFlag('FF_AUTH'));
 
 // Public routes
 router.post('/login', validate(authValidator.loginSchema), authController.login);

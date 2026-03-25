@@ -18,29 +18,10 @@ interface JwtConfig {
   refreshExpiry: string;
 }
 
-interface FeatureFlags {
-  FF_AUTH: boolean;
-  FF_CATEGORIES: boolean;
-  FF_UNIT_TYPES: boolean;
-  FF_SUPPLIERS: boolean;
-  FF_PRODUCTS: boolean;
-  FF_CUSTOMERS: boolean;
-  FF_SALES: boolean;
-  FF_PURCHASES: boolean;
-  FF_EXPENSES: boolean;
-  FF_DASHBOARD: boolean;
-  FF_USERS: boolean;
-  FF_REPORTS: boolean;
-}
-
 interface PaginationConfig {
   defaultPageLimit: number;
   maxPageLimit: number;
 }
-
-const parseEnvBoolean = (value: string | undefined): boolean => {
-  return value === 'true';
-};
 
 const parseEnvNumber = (value: string | undefined, defaultValue: number): number => {
   const parsed = Number(value);
@@ -66,21 +47,6 @@ export const env = {
     accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
   } as JwtConfig,
-
-  featureFlags: {
-    FF_AUTH: parseEnvBoolean(process.env.FF_AUTH),
-    FF_CATEGORIES: parseEnvBoolean(process.env.FF_CATEGORIES),
-    FF_UNIT_TYPES: parseEnvBoolean(process.env.FF_UNIT_TYPES),
-    FF_SUPPLIERS: parseEnvBoolean(process.env.FF_SUPPLIERS),
-    FF_PRODUCTS: parseEnvBoolean(process.env.FF_PRODUCTS),
-    FF_CUSTOMERS: parseEnvBoolean(process.env.FF_CUSTOMERS),
-    FF_SALES: parseEnvBoolean(process.env.FF_SALES),
-    FF_PURCHASES: parseEnvBoolean(process.env.FF_PURCHASES),
-    FF_EXPENSES: parseEnvBoolean(process.env.FF_EXPENSES),
-    FF_DASHBOARD: parseEnvBoolean(process.env.FF_DASHBOARD),
-    FF_USERS: parseEnvBoolean(process.env.FF_USERS),
-    FF_REPORTS: parseEnvBoolean(process.env.FF_REPORTS),
-  } as FeatureFlags,
 
   pagination: {
     defaultPageLimit: parseEnvNumber(process.env.DEFAULT_PAGE_LIMIT, 20),

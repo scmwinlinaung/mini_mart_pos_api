@@ -7,7 +7,7 @@ class StockMovement extends Model {
   public movementId!: number;
   public productId!: number;
   public userId!: number;
-  public movementType!: 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTMENT';
+  public movementType!: 'SALE' | 'PURCHASE' | 'RETURN' | 'RETURN_IN' | 'RETURN_OUT' | 'DAMAGE' | 'EXPIRED' | 'THEFT' | 'LOSS' | 'CORRECTION';
   public quantity!: number;
   public notes?: string;
   public isActive!: boolean;
@@ -50,7 +50,7 @@ StockMovement.init(
       allowNull: false,
       field: 'movement_type',
       validate: {
-        isIn: [['SALE', 'PURCHASE', 'RETURN', 'ADJUSTMENT']],
+        isIn: [['SALE', 'PURCHASE', 'RETURN', 'RETURN_IN', 'RETURN_OUT', 'DAMAGE', 'EXPIRED', 'THEFT', 'LOSS', 'CORRECTION']],
       },
     },
     quantity: {

@@ -1,15 +1,11 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
-import { checkFeatureFlag } from '../middleware/featureFlag.middleware';
 import validate from '../middleware/validation.middleware';
 import * as categoryController from '../controllers/category.controller';
 import * as categoryValidator from '../validators/category.validator';
 import { USER_ROLES } from '../constants';
 
 const router = Router();
-
-// All category routes require FF_CATEGORIES to be enabled
-router.use(checkFeatureFlag('FF_CATEGORIES'));
 
 // Public routes (for getting categories - POS needs this)
 router.get(

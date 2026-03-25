@@ -1,14 +1,11 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
-import { checkFeatureFlag } from '../middleware/featureFlag.middleware';
 import validate from '../middleware/validation.middleware';
 import * as supplierController from '../controllers/supplier.controller';
 import * as supplierValidator from '../validators/supplier.validator';
 import { USER_ROLES } from '../constants';
 
 const router = Router();
-
-router.use(checkFeatureFlag('FF_SUPPLIERS'));
 
 router.get(
   '/',

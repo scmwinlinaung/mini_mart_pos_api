@@ -133,7 +133,7 @@ CREATE TABLE stock_movements (
     product_id INT REFERENCES products(product_id),
     user_id INT REFERENCES users(user_id),
 
-    movement_type TEXT CHECK (movement_type IN ('SALE', 'PURCHASE', 'RETURN', 'ADJUSTMENT')),
+    movement_type TEXT CHECK (movement_type IN ('SALE', 'PURCHASE', 'RETURN', 'RETURN_IN', 'RETURN_OUT', 'DAMAGE', 'EXPIRED', 'THEFT', 'LOSS', 'CORRECTION')),
     quantity INT NOT NULL, -- Positive for adding stock, Negative for removing
 
     notes TEXT, -- e.g. "Invoice #123" or "Sale #99"
@@ -517,7 +517,7 @@ BEGIN
 
         -- 2. Add entry to Stock Ledger for deletion
         INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-        VALUES (OLD.product_id, purchase_user_id, 'ADJUSTMENT', -OLD.quantity, 'Deleted Purchase Item ID: ' || OLD.item_id || ' (Purchase ID: ' || OLD.purchase_id || ')', NOW(), NOW());
+        VALUES (OLD.product_id, purchase_user_id, 'CORRECTION', -OLD.quantity, 'Deleted Purchase Item ID: ' || OLD.item_id || ' (Purchase ID: ' || OLD.purchase_id || ')', NOW(), NOW());
     END IF;
 
     RETURN OLD;
@@ -553,7 +553,7 @@ BEGIN
 
                 -- 2. Add entry to Stock Ledger for soft-delete
                 INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-                VALUES (purchase_item.product_id, NEW.user_id, 'ADJUSTMENT', -purchase_item.quantity, 'Soft-Deleted Purchase ID: ' || NEW.purchase_id || ' (Item ID: ' || purchase_item.item_id || ')', NOW(), NOW());
+                VALUES (purchase_item.product_id, NEW.user_id, 'CORRECTION', -purchase_item.quantity, 'Soft-Deleted Purchase ID: ' || NEW.purchase_id || ' (Item ID: ' || purchase_item.item_id || ')', NOW(), NOW());
             END LOOP;
         END IF;
     END IF;

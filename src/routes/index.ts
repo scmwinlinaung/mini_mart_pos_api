@@ -11,19 +11,13 @@ import expenseRoutes from './expense.routes';
 import dashboardRoutes from './dashboard.routes';
 import userRoutes from './user.routes';
 import reportRoutes from './report.routes';
-import { getAllFeatureFlags } from '../middleware/featureFlag.middleware';
+import stockMovementRoutes from './stockMovement.routes';
 
 const router = Router();
 
 // Health check
 router.get('/health', (_req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// Feature flags endpoint
-router.get('/features', (_req, res) => {
-  const flags = getAllFeatureFlags();
-  res.status(200).json({ flags });
 });
 
 // API routes
@@ -39,5 +33,6 @@ router.use('/expenses', expenseRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/users', userRoutes);
 router.use('/reports', reportRoutes);
+router.use('/stock-movements', stockMovementRoutes);
 
 export default router;

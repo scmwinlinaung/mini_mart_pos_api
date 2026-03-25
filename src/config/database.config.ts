@@ -368,7 +368,7 @@ const recreateTriggers = async (): Promise<void> => {
 
         -- 2. Add entry to Stock Ledger for deletion
         INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-        VALUES (OLD.product_id, purchase_user_id, 'ADJUSTMENT', -OLD.quantity, 'Deleted Purchase Item ID: ' || OLD.item_id || ' (Purchase ID: ' || OLD.purchase_id || ')', NOW(), NOW());
+        VALUES (OLD.product_id, purchase_user_id, 'CORRECTION', -OLD.quantity, 'Deleted Purchase Item ID: ' || OLD.item_id || ' (Purchase ID: ' || OLD.purchase_id || ')', NOW(), NOW());
       END IF;
 
       RETURN OLD;
@@ -409,7 +409,7 @@ const recreateTriggers = async (): Promise<void> => {
 
             -- 2. Add entry to Stock Ledger for soft-delete
             INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-            VALUES (purchase_item.product_id, NEW.user_id, 'ADJUSTMENT', -purchase_item.quantity, 'Soft-Deleted Purchase ID: ' || NEW.purchase_id || ' (Item ID: ' || purchase_item.item_id || ')', NOW(), NOW());
+            VALUES (purchase_item.product_id, NEW.user_id, 'CORRECTION', -purchase_item.quantity, 'Soft-Deleted Purchase ID: ' || NEW.purchase_id || ' (Item ID: ' || purchase_item.item_id || ')', NOW(), NOW());
           END LOOP;
         END IF;
       END IF;

@@ -245,29 +245,43 @@ class StockMovementService {
     }
   }
 
-  async getLossReport(startDate?: Date, endDate?: Date, productId?: number): Promise<any> {
+  async getLossReport(filters: StockMovementFilterOptions = {}): Promise<PaginatedResult<StockMovement> & { summary: any }> {
     try {
+      const {
+        page = 1,
+        limit = env.pagination.defaultPageLimit,
+        productId,
+        startDate,
+        endDate,
+      } = filters;
+
+      const offset = (page - 1) * limit;
+
       const where: any = {
         isActive: true,
         movementType: ['DAMAGE', 'EXPIRED', 'THEFT', 'LOSS'],
       };
+
+      if (productId) {
+        where.productId = productId;
+      }
 
       if (startDate || endDate) {
         where.createdAt = {};
         if (startDate) where.createdAt[Op.gte] = startDate;
         if (endDate) where.createdAt[Op.lte] = endDate;
       }
-      if (productId) {
-        where.productId = productId
-      }
 
-      const movements = await StockMovement.findAll({
+      const { count, rows } = await StockMovement.findAndCountAll({
         where,
+        limit,
+        offset,
         include: ['product', 'user'],
         order: [['createdAt', 'DESC']],
       });
 
-      const report = {
+      // Calculate summary from the paginated results
+      const summary = {
         totalLoss: 0,
         byType: {
           DAMAGE: { count: 0, quantity: 0, value: 0 },
@@ -276,37 +290,45 @@ class StockMovementService {
           LOSS: { count: 0, quantity: 0, value: 0 },
         },
         byProduct: {} as any,
-        movements: movements,
       };
 
-      movements.forEach((movement) => {
+      rows.forEach((movement) => {
         const type = movement.movementType;
         const qty = Math.abs(movement.quantity);
         const value = (movement.product?.costPrice || 0) * qty;
 
-        report.totalLoss += value;
+        summary.totalLoss += value;
 
-        if (type in report.byType) {
-          report.byType[type as keyof typeof report.byType].count += 1;
-          report.byType[type as keyof typeof report.byType].quantity += qty;
-          report.byType[type as keyof typeof report.byType].value += value;
+        if (type in summary.byType) {
+          summary.byType[type as keyof typeof summary.byType].count += 1;
+          summary.byType[type as keyof typeof summary.byType].quantity += qty;
+          summary.byType[type as keyof typeof summary.byType].value += value;
         }
 
         const productName = movement.product?.productName || 'Unknown';
-        if (!report.byProduct[productName]) {
-          report.byProduct[productName] = {
+        if (!summary.byProduct[productName]) {
+          summary.byProduct[productName] = {
             productId: movement.productId,
             count: 0,
             quantity: 0,
             value: 0,
           };
         }
-        report.byProduct[productName].count += 1;
-        report.byProduct[productName].quantity += qty;
-        report.byProduct[productName].value += value;
+        summary.byProduct[productName].count += 1;
+        summary.byProduct[productName].quantity += qty;
+        summary.byProduct[productName].value += value;
       });
 
-      return report;
+      return {
+        data: rows,
+        pagination: {
+          page,
+          limit,
+          total: count,
+          totalPages: Math.ceil(count / limit),
+        },
+        summary,
+      };
     } catch (error) {
       logger.error('Get loss report service error:', error);
       throw error;

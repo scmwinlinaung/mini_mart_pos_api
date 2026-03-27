@@ -129,15 +129,32 @@ export const getStockMovementSummary = async (req: Request, res: Response): Prom
 
 export const getLossReport = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { startDate, endDate, productId } = req.query;
+    const {
+      page = 1,
+      limit = 20,
+      startDate,
+      endDate,
+      productId,
+    } = req.query;
 
-    const report = await stockMovementService.getLossReport(
-      startDate ? new Date(startDate as string) : undefined,
-      endDate ? new Date(endDate as string) : undefined,
-      Number(productId)
+    const filters: any = {
+      page: Number(page),
+      limit: Number(limit),
+    };
+
+    if (startDate) filters.startDate = new Date(startDate as string);
+    if (endDate) filters.endDate = new Date(endDate as string);
+    if (productId) filters.productId = Number(productId);
+
+    const result = await stockMovementService.getLossReport(filters);
+
+    paginatedResponse(
+      res,
+      result.data,
+      result.pagination.page,
+      result.pagination.limit,
+      result.pagination.total,
     );
-
-    successResponse(res, report, 'Loss report retrieved successfully');
   } catch (error) {
     logger.error('Get loss report controller error:', error);
     errorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, ERROR_MESSAGES.INTERNAL_ERROR);

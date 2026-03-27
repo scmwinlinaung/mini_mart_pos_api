@@ -40,10 +40,10 @@ class StockMovementService {
       }
 
       // Validate quantity based on movement type
-      const isNegativeMovement = ['DAMAGE', 'EXPIRED', 'THEFT', 'LOSS', 'RETURN_OUT'].includes(
+      const isNegativeMovement = ['DAMAGE', 'EXPIRED', 'THEFT', 'LOSS', 'RETURN_OUT', 'SALE'].includes(
         data.movementType,
       );
-      const isPositiveMovement = ['RETURN_IN', 'CORRECTION'].includes(data.movementType);
+      const isPositiveMovement = ['RETURN_IN', 'CORRECTION', 'PURCHASE'].includes(data.movementType);
 
       // For negative movements, ensure quantity is negative
       let adjustedQuantity = data.quantity;
@@ -183,7 +183,7 @@ class StockMovementService {
     }
   }
 
-  async getStockMovementSummary(startDate?: Date, endDate?: Date): Promise<any> {
+  async getStockMovementSummary(startDate?: Date, endDate?: Date, productId?: number): Promise<any> {
     try {
       const where: any = { isActive: true };
 
@@ -191,6 +191,9 @@ class StockMovementService {
         where.createdAt = {};
         if (startDate) where.createdAt[Op.gte] = startDate;
         if (endDate) where.createdAt[Op.lte] = endDate;
+      }
+      if (productId) {
+        where.productId = productId;
       }
 
       const movements = await StockMovement.findAll({
@@ -242,7 +245,7 @@ class StockMovementService {
     }
   }
 
-  async getLossReport(startDate?: Date, endDate?: Date): Promise<any> {
+  async getLossReport(startDate?: Date, endDate?: Date, productId?: number): Promise<any> {
     try {
       const where: any = {
         isActive: true,
@@ -253,6 +256,9 @@ class StockMovementService {
         where.createdAt = {};
         if (startDate) where.createdAt[Op.gte] = startDate;
         if (endDate) where.createdAt[Op.lte] = endDate;
+      }
+      if (productId) {
+        where.productId = productId
       }
 
       const movements = await StockMovement.findAll({

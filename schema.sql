@@ -96,7 +96,7 @@ CREATE TABLE customers (
 -- 8. Sales (Single transaction record with simplified structure)
 CREATE TABLE sales (
     sale_id SERIAL PRIMARY KEY,
-    invoice_no varchar(50) UNIQUE NOT NULL, -- e.g., 'INV-20231025-001'
+    invoice_no varchar(50) NOT NULL, -- e.g., 'INV-20231025-001' (shared across line items in same transaction)
     user_id INT REFERENCES users(user_id), -- Cashier
     customer_id INT REFERENCES customers(customer_id) ON DELETE CASCADE, -- Nullable for walk-ins
 
@@ -150,7 +150,7 @@ CREATE TABLE purchases (
 
     supplier_invoice_no varchar(50) UNIQUE,
     total_amount FLOAT DEFAULT 0.0,
-    status varchar(8) DEFAULT 'RECEIVED', -- 'PENDING', 'RECEIVED'
+    status varchar(8) DEFAULT 'PENDING', -- 'PENDING', 'RECEIVED'
 
     purchase_date TIMESTAMPTZ DEFAULT NOW(),
     is_active BOOLEAN DEFAULT TRUE,
@@ -430,31 +430,14 @@ AFTER UPDATE OF payment_status ON sales
 FOR EACH ROW
 EXECUTE FUNCTION fn_process_sale_refund();
 
--- B. Trigger: Auto-Add Stock on Purchase
+-- B. Trigger: Placeholder for Purchase Items Insert
+-- Note: Stock is NO LONGER added here to prevent double addition
+-- Stock is only added when purchase status changes to RECEIVED (see trg_purchase_status_received)
 CREATE OR REPLACE FUNCTION fn_process_purchase_stock()
 RETURNS TRIGGER AS $$
-DECLARE
-    purchase_user_id INT;
-    purchase_status VARCHAR(8);
 BEGIN
-    -- Get purchase status and user_id
-    SELECT status, user_id INTO purchase_status, purchase_user_id
-    FROM purchases
-    WHERE purchase_id = NEW.purchase_id;
-
-    -- Only process stock if purchase is RECEIVED
-    IF purchase_status = 'RECEIVED' THEN
-        -- 1. Add to Product Inventory
-        UPDATE products
-        SET stock_quantity = stock_quantity + NEW.quantity,
-            cost_price = NEW.buy_price -- Optional: Update latest cost price
-        WHERE product_id = NEW.product_id;
-
-        -- 2. Add entry to Stock Ledger
-        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-        VALUES (NEW.product_id, purchase_user_id, 'PURCHASE', NEW.quantity, 'Stock In Purchase ID: ' || NEW.purchase_id, NOW(), NOW());
-    END IF;
-
+    -- Stock is now only added when purchase status changes to RECEIVED
+    -- This trigger no longer adds stock to prevent double addition
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

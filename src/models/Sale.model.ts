@@ -45,7 +45,7 @@ Sale.init(
     invoiceNo: {
       type: DataTypes.STRING(50),
       allowNull: false,
-      unique: true,
+      // unique: true,
       field: 'invoice_no',
     },
     userId: {

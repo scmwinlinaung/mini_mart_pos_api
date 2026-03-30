@@ -81,10 +81,23 @@ export const refundSale = async (req: Request, res: Response): Promise<void> => 
     }
 
     const { id } = req.params;
-    const { refundAmount } = req.body;
-    const sale = await saleService.refundSale(Number(id), refundAmount);
+    const { items } = req.body;
 
-    successResponse(res, sale, 'Sale refunded successfully');
+    // Support both old API (single saleId + refundAmount) and new API (items array)
+    let result;
+    if (items && Array.isArray(items)) {
+      // New API: Item-level refunds
+      // items = [{ saleId: 123, quantity: 2 }, { saleId: 124, quantity: 1 }]
+      result = await saleService.refundSale(
+        items.map(item => item.saleId),
+        items,
+      );
+    } else {
+      // Old API: Backward compatibility - refund entire sale
+      result = await saleService.refundSale(Number(id));
+    }
+
+    successResponse(res, result, 'Sale refunded successfully');
   } catch (error: any) {
     logger.error('Refund sale controller error:', error);
 

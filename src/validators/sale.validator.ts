@@ -26,10 +26,16 @@ export const saleQuerySchema = Joi.object({
   invoiceNo: Joi.string().optional(),
   customerId: Joi.number().integer().positive().optional(),
   productId: Joi.number().integer().positive().optional(),
-  paymentStatus: Joi.string().valid('PAID', 'PENDING', 'REFUNDED').optional(),
+  paymentStatus: Joi.string().valid('PAID', 'PENDING', 'REFUNDED', 'PARTIAL_REFUND').optional(),
 });
 
 export const refundSchema = Joi.object({
-  refundAmount: Joi.number().min(0).required(),
+  refundAmount: Joi.number().min(0).optional(),
   reason: Joi.string().optional().allow(''),
-});
+  items: Joi.array().items(
+    Joi.object({
+      saleId: Joi.number().integer().positive().required(),
+      quantity: Joi.number().integer().min(1).required(),
+    })
+  ).optional(),
+}).or('refundAmount', 'items'); // Require either refundAmount (old API) or items (new API)

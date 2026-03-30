@@ -15,10 +15,8 @@ class SaleService {
     customerId?: number,
     productId?: number,
     paymentStatus?: string,
-  ): Promise<PaginatedResult<Sale>> {
+  ): Promise<PaginatedResult<any>> {
     try {
-      const offset = (page - 1) * limit;
-
       const where: any = { isActive: true };
 
       if (startDate || endDate) {
@@ -43,21 +41,50 @@ class SaleService {
         where.paymentStatus = paymentStatus;
       }
 
-      const { count, rows } = await Sale.findAndCountAll({
+      // Fetch all matching sales (no limit yet)
+      const sales = await Sale.findAll({
         where,
-        limit,
-        offset,
         include: ['user', 'customer', 'product', 'unitType'],
         order: [['createdAt', 'DESC']],
       });
 
+      // Group sales by invoice_no, keeping Sale model structure
+      const groupedSales = sales.reduce((acc, sale) => {
+        const key = sale.invoiceNo;
+        if (!acc[key]) {
+          acc[key] = sale.get({ plain: true });
+          acc[key].items = [sale.get({ plain: true })];
+        } else {
+          acc[key].items.push(sale.get({ plain: true }));
+        }
+        return acc;
+      }, {} as Record<string, any>);
+
+      // Add overall_status to each grouped invoice
+      Object.values(groupedSales).forEach((group: any) => {
+        const paymentStatuses = new Set(group.items.map((item: any) => item.paymentStatus));
+        if (paymentStatuses.has('PAID') && paymentStatuses.has('REFUNDED')) {
+          group.paymentStatus = 'PARTIAL_REFUND';
+        } else if (paymentStatuses.has('REFUNDED')) {
+          group.paymentStatus = 'REFUNDED';
+        } else {
+          group.paymentStatus = 'PAID';
+        }
+      });
+
+      // Convert to array and paginate
+      const groupedArray = Object.values(groupedSales);
+      const total = groupedArray.length;
+      const offset = (page - 1) * limit;
+      const paginatedData = groupedArray.slice(offset, offset + limit);
+
       return {
-        data: rows,
+        data: paginatedData,
         pagination: {
           page,
           limit,
-          total: count,
-          totalPages: Math.ceil(count / limit),
+          total,
+          totalPages: Math.ceil(total / limit),
         },
       };
     } catch (error) {
@@ -130,32 +157,99 @@ class SaleService {
     }
   }
 
-  async refundSale(id: number, _refundAmount: number,): Promise<Sale> {
+  async refundSale(
+    saleIds: number | number[],
+    refundItems?: Array<{ saleId: number; quantity: number }>,
+  ): Promise<Sale[]> {
     const t = await sequelize.transaction();
 
     try {
-      const sale = await Sale.findOne({
-        where: { saleId: id, isActive: true },
+      // Convert single saleId to array
+      const ids = Array.isArray(saleIds) ? saleIds : [saleIds];
+
+      // Find all sales to refund
+      const sales = await Sale.findAll({
+        where: {
+          saleId: { [Op.in]: ids },
+          isActive: true,
+        },
         transaction: t,
       });
 
-      if (!sale) {
-        throw new Error('Sale not found');
+      if (sales.length === 0) {
+        throw new Error('Sale(s) not found');
       }
 
-      if (sale.paymentStatus === 'REFUNDED') {
-        throw new Error('Sale already refunded');
-      }
+      const refundedSales: Sale[] = [];
 
-      // Update sale status (trigger will auto-restore stock and create stock movement)
-      await sale.update({
-        paymentStatus: 'REFUNDED',
-      }, { transaction: t });
+      // Process each sale item
+      for (const sale of sales) {
+        if (sale.paymentStatus === 'REFUNDED') {
+          logger.warn(`Sale ${sale.saleId} already refunded, skipping`);
+          continue;
+        }
+
+        // Check if we have a specific quantity to refund (partial refund)
+        const refundItem = refundItems?.find(item => item.saleId === sale.saleId);
+
+        if (refundItem && refundItem.quantity < sale.quantity) {
+          // Partial refund: Create a new sale record for the remaining quantity
+          const remainingQuantity = sale.quantity - refundItem.quantity;
+          const remainingTotalPrice = remainingQuantity * sale.unitPrice;
+          const remainingSubTotal = remainingTotalPrice + sale.taxAmount - sale.discountAmount;
+
+          // Update original sale to refunded quantity
+          await sale.update({
+            quantity: refundItem.quantity,
+            totalPrice: refundItem.quantity * sale.unitPrice,
+            subTotal: refundItem.quantity * sale.unitPrice + sale.taxAmount - sale.discountAmount,
+            grandTotal: refundItem.quantity * sale.unitPrice + sale.taxAmount - sale.discountAmount,
+            paymentStatus: 'REFUNDED',
+          }, { transaction: t });
+
+          // Create new sale for remaining items (keeps them as PAID)
+          await Sale.create({
+            invoiceNo: sale.invoiceNo,
+            userId: sale.userId,
+            customerId: sale.customerId,
+            productId: sale.productId,
+            unitTypeId: sale.unitTypeId,
+            barcode: sale.barcode,
+            productName: sale.productName,
+            quantity: remainingQuantity,
+            unitPrice: sale.unitPrice,
+            totalPrice: remainingTotalPrice,
+            taxAmount: sale.taxAmount * (remainingQuantity / sale.quantity),
+            discountAmount: sale.discountAmount * (remainingQuantity / sale.quantity),
+            subTotal: remainingSubTotal,
+            grandTotal: remainingSubTotal,
+            paymentMethod: sale.paymentMethod,
+            paymentStatus: 'PAID',
+          }, { transaction: t });
+
+          logger.info(`Partial refund processed: Sale ${sale.saleId} refunded ${refundItem.quantity}/${sale.quantity} items`);
+          refundedSales.push(sale);
+        } else {
+          // Full refund: Update payment status (trigger will auto-restore stock and create stock movement)
+          await sale.update({
+            paymentStatus: 'REFUNDED',
+          }, { transaction: t });
+
+          logger.info(`Sale refunded: ${sale.saleId}`);
+          refundedSales.push(sale);
+        }
+      }
 
       await t.commit();
 
-      logger.info(`Sale refunded: ${id}`);
-      return await this.getSaleById(id);
+      // Fetch and return the updated sales
+      const results = await Promise.all(
+        refundedSales.map(sale =>
+          this.getSaleById(sale.saleId).catch(() => sale)
+        )
+      );
+
+      return results;
     } catch (error) {
       await t.rollback();
       logger.error('Refund sale service error:', error);

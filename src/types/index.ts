@@ -1,5 +1,3 @@
-import { Role } from '../models/Role.model';
-
 // Auth Types
 export interface JwtPayload {
   userId: number;
@@ -160,7 +158,7 @@ export interface SaleCreateInput {
   subTotal?: number;
   grandTotal: number;
   paymentMethod: 'CASH' | 'CARD' | 'QR' | 'CREDIT';
-  paymentStatus?: 'PAID' | 'PENDING' | 'REFUNDED';
+  paymentStatus?: 'PAID' | 'PENDING' | 'REFUNDED' | 'PARTIAL_REFUND';
 }
 
 // Purchase Types

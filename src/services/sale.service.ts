@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Sale, Product } from '../models';
+import { Sale, Product, StockMovement } from '../models';
 import sequelize from '../models';
 import { SaleCreateInput, PaginatedResult } from '../types';
 import env from '../config/env.config';
@@ -122,7 +122,10 @@ class SaleService {
         throw new Error('Product not found');
       }
 
-      if (product.stockQuantity < data.quantity) {
+      const paymentStatus = data.paymentStatus || 'PAID';
+
+      // Only check stock for PAID sales
+      if (paymentStatus === 'PAID' && product.stockQuantity < data.quantity) {
         throw new Error('Insufficient stock');
       }
 
@@ -143,8 +146,27 @@ class SaleService {
         subTotal: data.subTotal || 0,
         grandTotal: data.grandTotal,
         paymentMethod: data.paymentMethod,
-        paymentStatus: data.paymentStatus || 'PAID',
+        paymentStatus,
       }, { transaction: t });
+
+      // Deduct stock and create stock movement for PAID sales
+      if (paymentStatus === 'PAID') {
+        await product.update({
+          stockQuantity: product.stockQuantity - data.quantity,
+          updatedAt: new Date(),
+        }, { transaction: t });
+
+        await StockMovement.create({
+          productId: data.productId,
+          userId: userId,
+          movementType: 'SALE',
+          quantity: -data.quantity,
+          notes: `Sale ID: ${sale.saleId} - ${data.productName}`,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }, { transaction: t });
+      }
 
       await t.commit();
 
@@ -198,6 +220,30 @@ class SaleService {
           const remainingTotalPrice = remainingQuantity * sale.unitPrice;
           const remainingSubTotal = remainingTotalPrice + sale.taxAmount - sale.discountAmount;
 
+          // Get product for stock restoration
+          const product = await Product.findByPk(sale.productId, { transaction: t });
+          if (!product) {
+            throw new Error(`Product not found for sale ${sale.saleId}`);
+          }
+
+          // Restore stock for the refunded quantity (original quantity)
+          await product.update({
+            stockQuantity: product.stockQuantity + sale.quantity,
+            updatedAt: new Date(),
+          }, { transaction: t });
+
+          // Create stock movement for refund
+          await StockMovement.create({
+            productId: sale.productId,
+            userId: sale.userId,
+            movementType: 'RETURN',
+            quantity: refundItem.quantity,
+            notes: `Refund for Sale ID: ${sale.saleId}`,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }, { transaction: t });
+
           // Update original sale to refunded quantity
           await sale.update({
             quantity: refundItem.quantity,
@@ -208,7 +254,7 @@ class SaleService {
           }, { transaction: t });
 
           // Create new sale for remaining items (keeps them as PAID)
-          await Sale.create({
+          const newSale = await Sale.create({
             invoiceNo: sale.invoiceNo,
             userId: sale.userId,
             customerId: sale.customerId,
@@ -227,10 +273,40 @@ class SaleService {
             paymentStatus: 'PAID',
           }, { transaction: t });
 
+          // Deduct stock for the new remaining sale
+          await product.update({
+            stockQuantity: product.stockQuantity - remainingQuantity,
+            updatedAt: new Date(),
+          }, { transaction: t });
+
           logger.info(`Partial refund processed: Sale ${sale.saleId} refunded ${refundItem.quantity}/${sale.quantity} items`);
-          refundedSales.push(sale);
+          refundedSales.push(sale, newSale);
         } else {
-          // Full refund: Update payment status (trigger will auto-restore stock and create stock movement)
+          // Full refund: Restore stock and create stock movement
+          const product = await Product.findByPk(sale.productId, { transaction: t });
+          if (!product) {
+            throw new Error(`Product not found for sale ${sale.saleId}`);
+          }
+
+          // Restore stock
+          await product.update({
+            stockQuantity: product.stockQuantity + sale.quantity,
+            updatedAt: new Date(),
+          }, { transaction: t });
+
+          // Create stock movement for refund
+          await StockMovement.create({
+            productId: sale.productId,
+            userId: sale.userId,
+            movementType: 'RETURN',
+            quantity: sale.quantity,
+            notes: `Refund for Sale ID: ${sale.saleId}`,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }, { transaction: t });
+
+          // Update sale payment status
           await sale.update({
             paymentStatus: 'REFUNDED',
           }, { transaction: t });

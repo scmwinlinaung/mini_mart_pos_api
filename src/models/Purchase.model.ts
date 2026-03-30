@@ -2,6 +2,7 @@ import { Model, DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.config';
 import Supplier from './Supplier.model';
 import User from './User.model';
+import PurchaseItem from './PurchaseItem.model';
 
 class Purchase extends Model {
   public purchaseId!: number;
@@ -18,6 +19,7 @@ class Purchase extends Model {
   // Associations
   public supplier?: Supplier;
   public user?: User;
+  public items?: PurchaseItem[];
 }
 
 Purchase.init(

@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Purchase, PurchaseItem } from '../models';
+import { Purchase, PurchaseItem, Product, StockMovement } from '../models';
 import sequelize from '../models';
 import { PurchaseCreateInput, PaginatedResult } from '../types';
 import env from '../config/env.config';
@@ -83,17 +83,19 @@ class PurchaseService {
         totalAmount += item.quantity * item.buyPrice;
       }
 
+      const status = data.status || 'RECEIVED';
+
       // Create purchase
       const purchase = await Purchase.create({
         supplierId: data.supplierId,
         userId: userId,
         supplierInvoiceNo: data.supplierInvoiceNo,
         totalAmount: data.totalAmount || totalAmount,
-        status: data.status || 'RECEIVED',
+        status,
         purchaseDate: data.purchaseDate || new Date(),
       }, { transaction: t });
 
-      // Create purchase items - trigger will handle stock updates
+      // Create purchase items and add stock if status is RECEIVED
       for (const item of data.items) {
         await PurchaseItem.create({
           purchaseId: purchase.purchaseId,
@@ -102,6 +104,29 @@ class PurchaseService {
           buyPrice: item.buyPrice,
           expiryDate: item.expiryDate,
         }, { transaction: t });
+
+        // Add stock and create stock movement if status is RECEIVED
+        if (status === 'RECEIVED') {
+          const product = await Product.findByPk(item.productId, { transaction: t });
+          if (product) {
+            await product.update({
+              stockQuantity: product.stockQuantity + item.quantity,
+              costPrice: item.buyPrice,
+              updatedAt: new Date(),
+            }, { transaction: t });
+
+            await StockMovement.create({
+              productId: item.productId,
+              userId: userId,
+              movementType: 'PURCHASE',
+              quantity: item.quantity,
+              notes: `Stock In Purchase ID: ${purchase.purchaseId}`,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }, { transaction: t });
+          }
+        }
       }
 
       await t.commit();
@@ -121,6 +146,7 @@ class PurchaseService {
     try {
       const purchase = await Purchase.findOne({
         where: { purchaseId: id, isActive: true },
+        include: [{ model: PurchaseItem, as: 'items' }],
         transaction: t,
       });
 
@@ -128,8 +154,36 @@ class PurchaseService {
         throw new Error('Purchase not found');
       }
 
-      // Trigger already handled stock updates when items were created
-      await purchase.update({ status: status || purchase.status }, { transaction: t });
+      const oldStatus = purchase.status;
+      const newStatus = status || purchase.status;
+
+      // Check if status is changing to RECEIVED
+      if (newStatus === 'RECEIVED' && oldStatus !== 'RECEIVED') {
+        // Add stock for all items
+        for (const item of purchase.items || []) {
+          const product = await Product.findByPk(item.productId, { transaction: t });
+          if (product) {
+            await product.update({
+              stockQuantity: product.stockQuantity + item.quantity,
+              costPrice: item.buyPrice,
+              updatedAt: new Date(),
+            }, { transaction: t });
+
+            await StockMovement.create({
+              productId: item.productId,
+              userId: purchase.userId,
+              movementType: 'PURCHASE',
+              quantity: item.quantity,
+              notes: `Stock In Purchase ID: ${purchase.purchaseId}`,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }, { transaction: t });
+          }
+        }
+      }
+
+      await purchase.update({ status: newStatus }, { transaction: t });
 
       await t.commit();
 
@@ -143,12 +197,50 @@ class PurchaseService {
   }
 
   async deletePurchase(id: number): Promise<void> {
+    const t = await sequelize.transaction();
+
     try {
-      const purchase = await this.getPurchaseById(id);
-      await purchase.update({ isActive: false });
+      const purchase = await Purchase.findOne({
+        where: { purchaseId: id, isActive: true },
+        include: [{ model: PurchaseItem, as: 'items' }],
+        transaction: t,
+      });
+
+      if (!purchase) {
+        throw new Error('Purchase not found');
+      }
+
+      // If purchase was RECEIVED, deduct stock for all items
+      if (purchase.status === 'RECEIVED') {
+        for (const item of purchase.items || []) {
+          const product = await Product.findByPk(item.productId, { transaction: t });
+          if (product) {
+            await product.update({
+              stockQuantity: product.stockQuantity - item.quantity,
+              updatedAt: new Date(),
+            }, { transaction: t });
+
+            await StockMovement.create({
+              productId: item.productId,
+              userId: purchase.userId,
+              movementType: 'CORRECTION',
+              quantity: -item.quantity,
+              notes: `Soft-Deleted Purchase ID: ${purchase.purchaseId} (Item ID: ${item.itemId})`,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }, { transaction: t });
+          }
+        }
+      }
+
+      await purchase.update({ isActive: false }, { transaction: t });
+
+      await t.commit();
 
       logger.info(`Purchase deleted: ${id}`);
     } catch (error) {
+      await t.rollback();
       logger.error('Delete purchase service error:', error);
       throw error;
     }

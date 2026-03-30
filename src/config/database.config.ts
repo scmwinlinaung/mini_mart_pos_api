@@ -42,8 +42,6 @@ export const connectDatabase = async (): Promise<void> => {
       await sequelize.query('DROP MATERIALIZED VIEW IF EXISTS mv_low_stock_products CASCADE;');
 
       // Drop triggers that depend on columns being altered
-      await sequelize.query('DROP TRIGGER IF EXISTS trg_sale_stock ON sales;');
-      await sequelize.query('DROP TRIGGER IF EXISTS trg_sale_refund ON sales;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_stock ON purchase_items;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_status_received ON purchases;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_purchase_soft_delete ON purchases;');
@@ -51,6 +49,11 @@ export const connectDatabase = async (): Promise<void> => {
       await sequelize.query('DROP TRIGGER IF EXISTS trg_refresh_dashboard_sales ON sales;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_refresh_dashboard_expenses ON expenses;');
       await sequelize.query('DROP TRIGGER IF EXISTS trg_refresh_dashboard_products ON products;');
+      await sequelize.query('DROP FUNCTION IF EXISTS fn_process_purchase_stock CASCADE;');
+      await sequelize.query('DROP FUNCTION IF EXISTS fn_process_purchase_status_received CASCADE;');
+      await sequelize.query('DROP FUNCTION IF EXISTS fn_process_purchase_item_delete CASCADE;');
+      await sequelize.query('DROP FUNCTION IF EXISTS fn_process_purchase_soft_delete CASCADE;');
+      await sequelize.query('DROP FUNCTION IF EXISTS trigger_refresh_dashboard_summary CASCADE;');
       console.log('Views and triggers dropped successfully');
 
       // Sync all models
@@ -58,10 +61,9 @@ export const connectDatabase = async (): Promise<void> => {
       console.log('Database synchronized');
 
       // Recreate views from schema.sql
-      console.log('Recreating views and triggers...');
+      console.log('Recreating views...');
       await recreateViews();
-      await recreateTriggers();
-      console.log('Views and triggers recreated successfully');
+      console.log('Views recreated successfully');
     } else {
       await sequelize.sync();
       console.log('Database synchronized');
@@ -212,253 +214,6 @@ const recreateViews = async (): Promise<void> => {
 
   await sequelize.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_low_stock_id ON mv_low_stock_products(id);
-  `);
-};
-
-// Helper function to recreate triggers after sync
-const recreateTriggers = async (): Promise<void> => {
-  // Create the function for processing sale stock
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION fn_process_sale_stock()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      UPDATE products
-      SET stock_quantity = stock_quantity - NEW.quantity,
-          updated_at = NOW()
-      WHERE product_id = NEW.product_id;
-
-      INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at)
-      VALUES (NEW.product_id, NEW.user_id, 'SALE', -NEW.quantity, 'Sale ID: ' || NEW.sale_id || ' - ' || NEW.product_name, NOW());
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the sale stock trigger
-  await sequelize.query(`
-    CREATE TRIGGER trg_sale_stock
-    AFTER INSERT ON sales
-    FOR EACH ROW
-    WHEN (NEW.payment_status = 'PAID')
-    EXECUTE FUNCTION fn_process_sale_stock();
-  `);
-
-  // Create the function for processing sale refunds
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION fn_process_sale_refund()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      IF (NEW.payment_status = 'REFUNDED' AND OLD.payment_status = 'PAID') THEN
-        UPDATE products
-        SET stock_quantity = stock_quantity + NEW.quantity,
-            updated_at = NOW()
-        WHERE product_id = NEW.product_id;
-
-        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-        VALUES (NEW.product_id, NEW.user_id, 'RETURN', NEW.quantity, 'Refund for Sale ID: ' || NEW.sale_id, NOW(), NOW());
-      END IF;
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the sale refund trigger
-  await sequelize.query(`
-    CREATE TRIGGER trg_sale_refund
-    AFTER UPDATE OF payment_status ON sales
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_process_sale_refund();
-  `);
-
-  // Create the function for processing purchase stock
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION fn_process_purchase_stock()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      purchase_user_id INT;
-      purchase_status VARCHAR(8);
-    BEGIN
-      -- Get purchase status and user_id
-      SELECT status, user_id INTO purchase_status, purchase_user_id
-      FROM purchases
-      WHERE purchase_id = NEW.purchase_id;
-
-      -- Only process stock if purchase is RECEIVED
-      IF purchase_status = 'RECEIVED' THEN
-        UPDATE products
-        SET stock_quantity = stock_quantity + NEW.quantity,
-            cost_price = NEW.buy_price
-        WHERE product_id = NEW.product_id;
-
-        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at)
-        VALUES (NEW.product_id, purchase_user_id, 'PURCHASE', NEW.quantity, 'Stock In Purchase ID: ' || NEW.purchase_id, NOW());
-      END IF;
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the function for processing purchase status change to RECEIVED
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION fn_process_purchase_status_received()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      purchase_item RECORD;
-    BEGIN
-      -- Only process when status changes to RECEIVED
-      IF NEW.status = 'RECEIVED' AND OLD.status != 'RECEIVED' THEN
-        FOR purchase_item IN
-          SELECT product_id, quantity, buy_price
-          FROM purchase_items
-          WHERE purchase_id = NEW.purchase_id
-        LOOP
-          UPDATE products
-          SET stock_quantity = stock_quantity + purchase_item.quantity,
-              cost_price = purchase_item.buy_price
-          WHERE product_id = purchase_item.product_id;
-
-          INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at)
-          VALUES (purchase_item.product_id, NEW.user_id, 'PURCHASE', purchase_item.quantity, 'Stock In Purchase ID: ' || NEW.purchase_id, NOW());
-        END LOOP;
-      END IF;
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the purchase stock trigger
-  await sequelize.query(`
-    CREATE TRIGGER trg_purchase_stock
-    AFTER INSERT ON purchase_items
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_process_purchase_stock();
-  `);
-
-  // Create the purchase status change trigger
-  await sequelize.query(`
-    CREATE TRIGGER trg_purchase_status_received
-    AFTER UPDATE OF status ON purchases
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_process_purchase_status_received();
-  `);
-
-  // Create the function for processing purchase item deletion
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION fn_process_purchase_item_delete()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      purchase_status VARCHAR(8);
-      purchase_user_id INT;
-    BEGIN
-      -- Get purchase status and user_id
-      SELECT status, user_id INTO purchase_status, purchase_user_id
-      FROM purchases
-      WHERE purchase_id = OLD.purchase_id;
-
-      -- Only process stock if purchase was RECEIVED (stock was added)
-      IF purchase_status = 'RECEIVED' THEN
-        -- 1. Subtract from Product Inventory (reverse the purchase)
-        UPDATE products
-        SET stock_quantity = stock_quantity - OLD.quantity
-        WHERE product_id = OLD.product_id;
-
-        -- 2. Add entry to Stock Ledger for deletion
-        INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-        VALUES (OLD.product_id, purchase_user_id, 'CORRECTION', -OLD.quantity, 'Deleted Purchase Item ID: ' || OLD.item_id || ' (Purchase ID: ' || OLD.purchase_id || ')', NOW(), NOW());
-      END IF;
-
-      RETURN OLD;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the purchase item delete trigger
-  await sequelize.query(`
-    CREATE TRIGGER trg_purchase_item_delete
-    AFTER DELETE ON purchase_items
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_process_purchase_item_delete();
-  `);
-
-  // Create the function for processing purchase soft delete (isActive = false)
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION fn_process_purchase_soft_delete()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      purchase_item RECORD;
-    BEGIN
-      -- Only process when isActive changes to false
-      IF NEW.is_active = FALSE AND OLD.is_active = TRUE THEN
-        -- Only reverse stock if purchase was RECEIVED
-        IF NEW.status = 'RECEIVED' THEN
-          -- Process all purchase items for this purchase
-          FOR purchase_item IN
-            SELECT product_id, quantity, item_id
-            FROM purchase_items
-            WHERE purchase_id = NEW.purchase_id
-            AND is_active = TRUE
-          LOOP
-            -- 1. Subtract from Product Inventory (reverse the purchase)
-            UPDATE products
-            SET stock_quantity = stock_quantity - purchase_item.quantity
-            WHERE product_id = purchase_item.product_id;
-
-            -- 2. Add entry to Stock Ledger for soft-delete
-            INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, notes, created_at, updated_at)
-            VALUES (purchase_item.product_id, NEW.user_id, 'CORRECTION', -purchase_item.quantity, 'Soft-Deleted Purchase ID: ' || NEW.purchase_id || ' (Item ID: ' || purchase_item.item_id || ')', NOW(), NOW());
-          END LOOP;
-        END IF;
-      END IF;
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the purchase soft delete trigger
-  await sequelize.query(`
-    CREATE TRIGGER trg_purchase_soft_delete
-    AFTER UPDATE OF is_active ON purchases
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_process_purchase_soft_delete();
-  `);
-
-  // Create the function for refreshing dashboard summary
-  await sequelize.query(`
-    CREATE OR REPLACE FUNCTION trigger_refresh_dashboard_summary()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      REFRESH MATERIALIZED VIEW CONCURRENTLY mv_dashboard_summary;
-      REFRESH MATERIALIZED VIEW CONCURRENTLY mv_low_stock_products;
-      RETURN NULL;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-
-  // Create the refresh triggers for sales, expenses, and products
-  await sequelize.query(`
-    CREATE TRIGGER trg_refresh_dashboard_sales
-    AFTER INSERT OR UPDATE OR DELETE ON sales
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION trigger_refresh_dashboard_summary();
-  `);
-
-  await sequelize.query(`
-    CREATE TRIGGER trg_refresh_dashboard_expenses
-    AFTER INSERT OR UPDATE OR DELETE ON expenses
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION trigger_refresh_dashboard_summary();
-  `);
-
-  await sequelize.query(`
-    CREATE TRIGGER trg_refresh_dashboard_products
-    AFTER INSERT OR UPDATE OR DELETE ON products
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION trigger_refresh_dashboard_summary();
   `);
 };
 

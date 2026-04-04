@@ -338,6 +338,7 @@ SELECT
     COALESCE(SUM(s.grand_total), 0) as total_revenue,
     COALESCE(SUM(p.cost_price * s.quantity), 0) as total_cost,
     (SELECT COALESCE(SUM(amount), 0) FROM expenses) as total_expenses,
+    COALESCE(SUM(s.grand_total), 0) - COALESCE(SUM(p.cost_price * s.quantity), 0) - (SELECT COALESCE(SUM(amount), 0) FROM expenses) as total_profit,
     COUNT(DISTINCT s.invoice_no) as total_sales,
     (SELECT COUNT(*) FROM products WHERE is_active = true) as total_products,
     (SELECT COUNT(*) FROM products WHERE stock_quantity <= reorder_level AND is_active = true) as low_stock_products,
@@ -345,6 +346,7 @@ SELECT
 FROM sales s
 LEFT JOIN products p ON s.product_id = p.product_id
 WHERE s.payment_status = 'PAID'
+    AND s.status = 'PAID'
     AND s.created_at >= DATE_TRUNC('year', CURRENT_DATE);
 
 -- Create index

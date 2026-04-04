@@ -228,7 +228,7 @@ class SaleService {
 
           // Restore stock for the refunded quantity (original quantity)
           await product.update({
-            stockQuantity: product.stockQuantity + sale.quantity,
+            stockQuantity: product.stockQuantity + refundItem.quantity,
             updatedAt: new Date(),
           }, { transaction: t });
 
@@ -274,10 +274,10 @@ class SaleService {
           }, { transaction: t });
 
           // Deduct stock for the new remaining sale
-          await product.update({
-            stockQuantity: product.stockQuantity - remainingQuantity,
-            updatedAt: new Date(),
-          }, { transaction: t });
+          // await product.update({
+          //   stockQuantity: product.stockQuantity - remainingQuantity,
+          //   updatedAt: new Date(),
+          // }, { transaction: t });
 
           logger.info(`Partial refund processed: Sale ${sale.saleId} refunded ${refundItem.quantity}/${sale.quantity} items`);
           refundedSales.push(sale, newSale);

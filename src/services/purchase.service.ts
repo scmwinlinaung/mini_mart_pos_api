@@ -37,7 +37,7 @@ class PurchaseService {
         where,
         limit,
         offset,
-        include: ['supplier', 'user', { model: PurchaseItem, as: 'items', include: ['product'] }],
+        include: ['supplier', 'user', { model: PurchaseItem, as: 'items', include: [{ model: Product, as: 'product', include: ['unitType'] }] }],
         order: [['purchaseDate', 'DESC']],
       });
       return {
@@ -59,7 +59,7 @@ class PurchaseService {
     try {
       const purchase = await Purchase.findOne({
         where: { purchaseId: id, isActive: true },
-        include: ['supplier', 'user', { model: PurchaseItem, as: 'items', include: ['product'] }],
+        include: ['supplier', 'user', { model: PurchaseItem, as: 'items', include: [{ model: Product, as: 'product', include: ['unitType'] }] }],
       });
 
       if (!purchase) {

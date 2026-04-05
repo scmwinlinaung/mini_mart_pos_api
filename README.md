@@ -10,6 +10,7 @@ Express.js TypeScript backend API for the Mini Mart POS system.
 - [Authentication](#authentication)
 - [API Endpoints](#api-endpoints)
 - [Data Models](#data-models)
+- [Important Implementation Notes](#important-implementation-notes)
 - [Feature Flags](#feature-flags)
 - [Project Structure](#project-structure)
 - [Environment Variables](#environment-variables)
@@ -395,7 +396,9 @@ Process sales transactions.
 - `invoiceNo` (string)
 - `customerId` (integer)
 - `productId` (integer)
-- `paymentStatus` (string: PAID, PENDING, REFUNDED)
+- `paymentStatus` (string: PAID, PENDING, REFUNDED, PARTIAL_REFUND)
+
+**Note:** Sales are grouped by `invoiceNo`. Each sale record represents one line item in a transaction. Multiple items with the same `invoiceNo` belong to the same transaction/invoice.
 
 **Create Sale Request:**
 ```json
@@ -419,6 +422,24 @@ Process sales transactions.
 ```
 
 **Refund Sale Request:**
+
+*New API - Item-level refunds (supports partial refunds):*
+```json
+{
+  "items": [
+    {
+      "saleId": 123,
+      "quantity": 2
+    },
+    {
+      "saleId": 124,
+      "quantity": 1
+    }
+  ]
+}
+```
+
+*Old API - Full invoice refund (backward compatibility):*
 ```json
 {
   "refundAmount": 35.00,
@@ -466,6 +487,8 @@ Manage supplier purchases.
   ]
 }
 ```
+
+**Note:** Purchase items include product details with unit type information via relationship.
 
 ---
 
@@ -526,6 +549,10 @@ Track inventory stock movements.
   "notes": "Broken bottles during delivery"
 }
 ```
+
+**Movement Types:** SALE, PURCHASE, RETURN, RETURN_IN, RETURN_OUT, DAMAGE, EXPIRED, THEFT, LOSS, CORRECTION
+
+**Note:** Positive quantity adds stock, negative quantity removes stock.
 
 ---
 
@@ -606,6 +633,7 @@ Generate business reports.
 - `PAID` - Payment completed
 - `PENDING` - Payment pending
 - `REFUNDED` - Payment refunded
+- `PARTIAL_REFUND` - Some items in invoice refunded, some paid (applies at invoice level)
 
 ### Purchase Status
 
@@ -616,8 +644,44 @@ Generate business reports.
 
 - `SALE` - Stock sold
 - `PURCHASE` - Stock purchased
-- `RETURN` - Stock returned
-- `ADJUSTMENT` - Manual adjustment (damage, expired, theft, loss, correction)
+- `RETURN` - Stock returned (customer refunds)
+- `RETURN_IN` - Stock returned to supplier
+- `RETURN_OUT` - Stock returned from customer
+- `DAMAGE` - Damaged stock
+- `EXPIRED` - Expired stock
+- `THEFT` - Stolen stock
+- `LOSS` - Lost stock
+- `CORRECTION` - Manual stock correction
+
+---
+
+## Important Implementation Notes
+
+### Service Layer Architecture
+
+All stock movement and inventory automation has been moved to the service layer. Database triggers are **no longer used** for:
+- Stock quantity updates on sales/purchases
+- Stock movement creation
+- Materialized view auto-refresh
+
+This approach provides:
+- Better transaction management and rollback support
+- More control over business logic
+- Easier testing and debugging
+- Explicit audit trails
+
+**Materialized Views:** Dashboard views can be manually refreshed using:
+```sql
+SELECT refresh_all_materialized_views();
+```
+
+### Partial Refund Behavior
+
+When performing partial refunds on sale items:
+- The original sale record is updated with the refunded quantity and marked as `REFUNDED`
+- A new sale record is created for the remaining items with `PAID` status
+- Stock is restored for the refunded quantity only
+- Both records share the same `invoiceNo` for grouping
 
 ---
 
